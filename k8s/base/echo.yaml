@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo
+  labels:
+    app: echo
+    bench-role: deps
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: echo
+  template:
+    metadata:
+      labels:
+        app: echo
+        bench-role: deps
+    spec:
+      nodeSelector:
+        bench-deps: placeholder
+      tolerations:
+        - key: bench-deps
+          operator: Equal
+          value: placeholder
+          effect: NoSchedule
+      containers:
+        - name: echo
+          image: benchmark-app/echo:latest
+          env:
+            - name: GOMAXPROCS
+              value: "2"
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "1"
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      imagePullSecrets:
+        - name: registry-pull
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo
+spec:
+  selector:
+    app: echo
+  ports:
+    - port: 8080
+      targetPort: 8080

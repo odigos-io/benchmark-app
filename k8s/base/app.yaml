@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bucket-app
+  labels:
+    app: bucket-app
+spec:
+  replicas: 1
+  # One pod at a time. A rolling update would briefly run two JVMs on the one
+  # node and the second could not get an exclusive core.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bucket-app
+  template:
+    metadata:
+      labels:
+        app: bucket-app
+    spec:
+      nodeSelector:
+        bench-cell: placeholder
+      tolerations:
+        - key: bench-cell
+          operator: Equal
+          value: placeholder
+          effect: NoSchedule
+      terminationGracePeriodSeconds: 15
+      # Exactly one container and no init containers: Guaranteed QoS needs
+      # requests == limits on every container in the pod, and the static CPU
+      # manager only hands out exclusive cores to Guaranteed pods with an
+      # integer CPU request (pkg/kubelet/cm/cpumanager/policy_static.go).
+      containers:
+        - name: app
+          image: benchmark-app/app:latest
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: BENCH_PRESET
+              value: M
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Xms2g -Xmx2g -Xmn1g -XX:+UseG1GC -XX:+AlwaysPreTouch -XX:ActiveProcessorCount=2 -XX:ReservedCodeCacheSize=256m -Dhttp.maxConnections=64 -Dhttp.keepAlive=true"
+            - name: DOWNSTREAM_URL
+              value: "http://echo.$(NAMESPACE).svc.cluster.local:8080"
+            - name: DB_URL
+              value: "jdbc:postgresql://postgres.$(NAMESPACE).svc.cluster.local:5432/bench"
+            - name: DB_USER
+              value: bench
+            - name: DB_PASSWORD
+              value: bench
+            - name: REDIS_HOST
+              value: "redis.$(NAMESPACE).svc.cluster.local"
+            - name: REDIS_PORT
+              value: "6379"
+          ports:
+            - containerPort: 8080
+          # TCP, not HTTP: an HTTP probe would be an instrumented request and
+          # would add spans the load generator never sent.
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+      imagePullSecrets:
+        - name: registry-pull
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bucket-app
+spec:
+  selector:
+    app: bucket-app
+  ports:
+    - port: 8080
+      targetPort: 8080

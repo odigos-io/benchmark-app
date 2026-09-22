@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  labels:
+    app: postgres
+    bench-role: deps
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        bench-role: deps
+    spec:
+      nodeSelector:
+        bench-deps: placeholder
+      tolerations:
+        - key: bench-deps
+          operator: Equal
+          value: placeholder
+          effect: NoSchedule
+      containers:
+        - name: postgres
+          image: postgres:16
+          # Autovacuum wakes every 5 s so the churn table is cleaned at the
+          # absolute thresholds the schema sets, not once per default minute.
+          args:
+            - -c
+            - autovacuum_naptime=5s
+            - -c
+            - autovacuum_max_workers=4
+          env:
+            - name: POSTGRES_USER
+              value: bench
+            - name: POSTGRES_PASSWORD
+              value: bench
+            - name: POSTGRES_DB
+              value: bench
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "bench", "-d", "bench"]
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+      volumes:
+        # Every arm restarts the pod, so every arm starts from an empty,
+        # freshly seeded database. Nothing persists across arms by design.
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

@@ -1,0 +1,32 @@
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="//"
+
+--//
+Content-Type: application/node.eks.aws
+
+# Fallback user data for an app nodegroup when eksctl cannot pass the
+# NodeConfig in infra/aws/cluster.yaml (overrideBootstrapCommand). Same kubelet
+# settings; the cluster section is filled in by EKS for managed nodegroups
+# created through a launch template.
+#
+#   aws ec2 create-launch-template --launch-template-name benchmark-app-<cell> \
+#     --launch-template-data "{\"UserData\":\"$(base64 < infra/aws/app-nodegroup.mime | tr -d '\n')\",\"MetadataOptions\":{\"HttpTokens\":\"required\"}}"
+#   aws eks create-nodegroup --cluster-name benchmark-app --nodegroup-name ng-app-<cell> \
+#     --node-role <node-role-arn> --subnets <us-east-1a subnet> --instance-types m6i.2xlarge \
+#     --ami-type AL2023_x86_64_STANDARD --scaling-config minSize=1,maxSize=1,desiredSize=1 \
+#     --labels bench-cell=<cell> --taints key=bench-cell,value=<cell>,effect=NO_SCHEDULE \
+#     --launch-template name=benchmark-app-<cell>
+---
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  kubelet:
+    config:
+      cpuManagerPolicy: static
+      cpuManagerPolicyOptions:
+        full-pcpus-only: "true"
+      reservedSystemCPUs: "0,4"
+      kubeReservedCgroup: ""
+      systemReservedCgroup: ""
+
+--//--

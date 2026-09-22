@@ -1,0 +1,26 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bench-runner
+# k6 runs as a per-arm Job on the load node (k6-job.tpl.yaml); no standing k6
+# pod, or it would reserve the CPU the Job needs.
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bench-tools
+  namespace: bench-runner
+  labels:
+    app: bench-tools
+spec:
+  nodeSelector:
+    bench-lane: shared
+  containers:
+    - name: curl
+      image: curlimages/curl:8.11.1
+      command: ["sleep", "infinity"]
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi

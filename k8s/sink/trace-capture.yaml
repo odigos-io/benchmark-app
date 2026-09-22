@@ -1,0 +1,115 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: trace-capture-config
+  namespace: bench-sink
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+            max_recv_msg_size_mib: 64
+          http:
+            endpoint: 0.0.0.0:4318
+    exporters:
+      # Whole spans on disk, so trace structure can be checked rather than assumed.
+      file:
+        path: /capture/spans.json
+        rotation:
+          max_megabytes: 200
+          max_backups: 2
+      nop: {}
+    service:
+      telemetry:
+        metrics:
+          level: normal
+          readers:
+            - pull:
+                exporter:
+                  prometheus:
+                    host: 0.0.0.0
+                    port: 8888
+      pipelines:
+        traces:
+          receivers: [otlp]
+          exporters: [file]
+        metrics:
+          receivers: [otlp]
+          exporters: [nop]
+        logs:
+          receivers: [otlp]
+          exporters: [nop]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trace-capture
+  namespace: bench-sink
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trace-capture
+  template:
+    metadata:
+      labels:
+        app: trace-capture
+    spec:
+      nodeSelector:
+        bench-lane: shared
+      containers:
+        - name: collector
+          image: otel/opentelemetry-collector-contrib:0.121.0
+          args: ["--config=/etc/otel/config.yaml"]
+          ports:
+            - containerPort: 4317
+            - containerPort: 8888
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+            - name: capture
+              mountPath: /capture
+          resources:
+            requests:
+              cpu: "1"
+              memory: 2Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+        # The collector image has no shell, so a sidecar shares the volume and
+        # provides one for reading the captured spans back out.
+        - name: reader
+          image: busybox:1.36
+          command: ["sleep", "infinity"]
+          volumeMounts:
+            - name: capture
+              mountPath: /capture
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+      volumes:
+        - name: config
+          configMap:
+            name: trace-capture-config
+        - name: capture
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trace-capture
+  namespace: bench-sink
+spec:
+  selector:
+    app: trace-capture
+  ports:
+    - name: grpc
+      port: 4317
+      targetPort: 4317
+    - name: metrics
+      port: 8888
+      targetPort: 8888

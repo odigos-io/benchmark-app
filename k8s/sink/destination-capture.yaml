@@ -1,0 +1,17 @@
+# Second Destination, applied only while bin/capture_spans.sh runs: the
+# gateway then fans out to the file-writing collector as well as the nop sink.
+# It is deleted afterwards so measured arms export to the nop sink only.
+apiVersion: odigos.io/v1alpha1
+kind: Destination
+metadata:
+  name: bench-capture
+  namespace: odigos-system
+spec:
+  type: otlp
+  destinationName: bench-capture
+  data:
+    OTLP_GRPC_ENDPOINT: "trace-capture.bench-sink.svc.cluster.local:4317"
+    OTLP_GRPC_TLS_ENABLED: "false"
+    OTLP_GRPC_COMPRESSION: "none"
+  signals:
+    - TRACES

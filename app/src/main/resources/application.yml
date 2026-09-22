@@ -1,0 +1,61 @@
+server:
+  port: ${PORT:8080}
+  tomcat:
+    threads:
+      max: 32
+      min-spare: 32
+    accesslog:
+      enabled: false
+
+bench:
+  preset: ${BENCH_PRESET:S}
+  allow-query-overrides: ${BENCH_ALLOW_QUERY_OVERRIDES:false}
+  units-per-ms: ${BENCH_UNITS_PER_MS:10}
+  ring-slots: ${BENCH_RING_SLOTS:100000}
+  downstream-url: ${DOWNSTREAM_URL:http://echo:8080}
+  cpu-units: ${BENCH_CPU_UNITS:}
+  jdbc-ops: ${BENCH_JDBC_OPS:}
+  redis-ops: ${BENCH_REDIS_OPS:}
+  http-calls: ${BENCH_HTTP_CALLS:}
+  downstream-delay-ms: ${BENCH_DOWNSTREAM_DELAY_MS:}
+  payload-bytes: ${BENCH_PAYLOAD_BYTES:}
+
+spring:
+  main:
+    banner-mode: off
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres:5432/bench}
+    username: ${DB_USER:bench}
+    password: ${DB_PASSWORD:bench}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 8
+      connection-timeout: 10000
+      auto-commit: true
+  sql:
+    init:
+      mode: always
+      continue-on-error: false
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+      timeout: 5s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      show-details: never
+  metrics:
+    tags:
+      application: bucket-bench
+
+logging:
+  level:
+    root: WARN

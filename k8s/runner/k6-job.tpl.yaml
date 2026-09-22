@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: bench-runner
+spec:
+  backoffLimit: 0
+  completions: 1
+  parallelism: 1
+  template:
+    metadata:
+      labels:
+        app: k6-run
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        bench-lane: load
+      tolerations:
+        - key: bench-lane
+          operator: Equal
+          value: load
+          effect: NoSchedule
+      containers:
+        - name: k6
+          image: grafana/k6:0.58.0
+          args:
+            - run
+            - --quiet
+            - --no-usage-report
+            - /scripts/load.js
+          env:
+            - name: BASE_URL
+              value: "${BASE_URL}"
+            - name: MODE
+              value: "${K6_MODE}"
+            - name: DURATION
+              value: "${K6_DURATION}"
+            - name: WARM_RAMP
+              value: "${K6_WARM_RAMP}"
+            - name: WARM_S
+              value: "${K6_WARM_S}"
+            - name: RATE
+              value: "${K6_RATE}"
+            - name: P99_S
+              value: "${K6_P99_S}"
+            - name: PRE_VUS
+              value: "${K6_PRE_VUS}"
+            - name: MAX_VUS
+              value: "${K6_MAX_VUS}"
+            - name: EXPECT_UNITS
+              value: "${K6_EXPECT_UNITS}"
+            - name: EXPECT_JDBC
+              value: "${K6_EXPECT_JDBC}"
+            - name: EXPECT_REDIS
+              value: "${K6_EXPECT_REDIS}"
+            - name: EXPECT_HTTP
+              value: "${K6_EXPECT_HTTP}"
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+          resources:
+            requests:
+              cpu: "${K6_CPU_REQ}"
+              memory: 2Gi
+            limits:
+              cpu: "${K6_CPU_LIM}"
+              memory: 4Gi
+      volumes:
+        - name: script
+          configMap:
+            name: k6-script

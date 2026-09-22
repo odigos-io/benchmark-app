@@ -1,0 +1,9 @@
+app/target/
+downstream/echo
+*.pyc
+__pycache__/
+.DS_Store
+results/**/k6-script.live.js
+k8s/rendered/
+*.pem
+.env

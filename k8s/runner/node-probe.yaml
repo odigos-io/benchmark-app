@@ -1,0 +1,62 @@
+# Read-only window onto every app node: kubelet CPU-manager state, the node's
+# cgroup tree (odiglet, node collector, root cpu.stat) and /proc. Used by
+# infra/verify-nodes.sh and by bin/run.sh for the per-arm node deltas.
+# Privileged and hostPID so the cgroup files of other pods are readable;
+# every mount is read-only and the container only sleeps.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-probe
+  namespace: bench-runner
+spec:
+  selector:
+    matchLabels:
+      app: node-probe
+  template:
+    metadata:
+      labels:
+        app: node-probe
+    spec:
+      hostPID: true
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: bench-cell
+                    operator: Exists
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: probe
+          image: busybox:1.36
+          command: ["sleep", "infinity"]
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: cgroup
+              mountPath: /host/sys/fs/cgroup
+              readOnly: true
+            - name: kubelet
+              mountPath: /host/var/lib/kubelet
+              readOnly: true
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+        - name: kubelet
+          hostPath:
+            path: /var/lib/kubelet
+        - name: proc
+          hostPath:
+            path: /proc

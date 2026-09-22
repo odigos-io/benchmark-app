@@ -1,0 +1,269 @@
+# Benchmark cluster for the application-bucket overhead measurement.
+#
+#   eksctl create cluster -f infra/aws/cluster.yaml      (infra/aws/create-cluster.sh)
+#   eksctl delete cluster -f infra/aws/cluster.yaml      (infra/aws/teardown.sh)
+#
+# One app node per cell, one dependency node per cell, one load node, two
+# shared nodes. Every node sits in us-east-1a: app<->dependency latency is then
+# a constant, not a variable between cells. EKS needs two AZs for the control
+# plane, so the cluster lists two and every nodegroup pins the first.
+#
+# The app nodegroups carry a nodeadm NodeConfig that turns on the kubelet
+# static CPU manager. The app pod (cpu request == limit == 2, Guaranteed) then
+# owns one physical core (two SMT siblings) exclusively, and kubelet 1.33
+# drops its CFS quota (feature gate DisableCPUQuotaWithExclusiveCPUs, beta and
+# on by default: pkg/features/kube_features.go, release-1.33). The gate in
+# bin/lib/gate.py checks cpu.max == "max" and a 2-CPU cpuset on every arm.
+#
+# reservedSystemCPUs "0,4" keeps kubelet, containerd, odiglet and the node
+# collector on the first sibling pair; the app can only land on pairs 1/5,
+# 2/6 or 3/7 (full-pcpus-only). nodeadm defaults kubeReservedCgroup=/runtime
+# and systemReservedCgroup=/system, and kubelet refuses reservedSystemCPUs
+# alongside either (pkg/kubelet/apis/config/validation/validation.go:316-320,
+# release-1.33), so both are blanked in the same drop-in. kubelet then moves
+# the cpu reservation into systemReserved itself (cmd/kubelet/app/server.go:794-805).
+#
+# eksctl accepts overrideBootstrapCommand on AL2023 managed nodegroups without a
+# custom AMI and parses it as a NodeConfig that nodeadm merges with its own
+# (pkg/nodebootstrap/al2023.go, pkg/apis/eksctl.io/v1alpha5/validation.go).
+# If a future eksctl rejects it, infra/aws/app-nodegroup.mime is the same NodeConfig
+# for `aws eks create-nodegroup --launch-template`.
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: benchmark-app
+  region: us-east-1
+  version: "1.33"
+  tags:
+    purpose: benchmark-app
+
+availabilityZones: [us-east-1a, us-east-1b]
+
+iam:
+  withOIDC: true
+
+accessConfig:
+  authenticationMode: API_AND_CONFIG_MAP
+
+managedNodeGroups:
+  - name: ng-app-s
+    instanceType: m6i.2xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-cell: s
+    taints:
+      - key: bench-cell
+        value: s
+        effect: NoSchedule
+    overrideBootstrapCommand: &static-cpu-manager |
+      apiVersion: node.eks.aws/v1alpha1
+      kind: NodeConfig
+      spec:
+        kubelet:
+          config:
+            cpuManagerPolicy: static
+            cpuManagerPolicyOptions:
+              full-pcpus-only: "true"
+            reservedSystemCPUs: "0,4"
+            kubeReservedCgroup: ""
+            systemReservedCgroup: ""
+
+  - name: ng-app-schatty
+    instanceType: m6i.2xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-cell: schatty
+    taints:
+      - key: bench-cell
+        value: schatty
+        effect: NoSchedule
+    overrideBootstrapCommand: *static-cpu-manager
+
+  - name: ng-app-m
+    instanceType: m6i.2xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-cell: m
+    taints:
+      - key: bench-cell
+        value: m
+        effect: NoSchedule
+    overrideBootstrapCommand: *static-cpu-manager
+
+  - name: ng-app-l
+    instanceType: m6i.2xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-cell: l
+    taints:
+      - key: bench-cell
+        value: l
+        effect: NoSchedule
+    overrideBootstrapCommand: *static-cpu-manager
+
+  - name: ng-app-xl
+    instanceType: m6i.2xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-cell: xl
+    taints:
+      - key: bench-cell
+        value: xl
+        effect: NoSchedule
+    overrideBootstrapCommand: *static-cpu-manager
+
+  # Postgres, Redis and the echo service of one cell. Pinned per cell so a
+  # database that relocates between arms cannot move the workload's bottleneck.
+  - name: ng-deps-s
+    instanceType: m6i.xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-deps: s
+    taints:
+      - key: bench-deps
+        value: s
+        effect: NoSchedule
+
+  - name: ng-deps-schatty
+    instanceType: m6i.xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-deps: schatty
+    taints:
+      - key: bench-deps
+        value: schatty
+        effect: NoSchedule
+
+  - name: ng-deps-m
+    instanceType: m6i.xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-deps: m
+    taints:
+      - key: bench-deps
+        value: m
+        effect: NoSchedule
+
+  - name: ng-deps-l
+    instanceType: m6i.xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-deps: l
+    taints:
+      - key: bench-deps
+        value: l
+        effect: NoSchedule
+
+  - name: ng-deps-xl
+    instanceType: m6i.xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-deps: xl
+    taints:
+      - key: bench-deps
+        value: xl
+        effect: NoSchedule
+
+  # k6 only. A load generator sharing a node with the service it measures makes
+  # the measurement worthless.
+  - name: ng-load
+    instanceType: m6i.2xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-lane: load
+    taints:
+      - key: bench-lane
+        value: load
+        effect: NoSchedule
+
+  # Odigos control plane and gateway, the OTLP sink, coredns, the tools pod.
+  - name: ng-shared
+    instanceType: m6i.2xlarge
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 2
+    availabilityZones: [us-east-1a]
+    volumeSize: 100
+    volumeType: gp3
+    amiFamily: AmazonLinux2023
+    disableIMDSv1: true
+    labels:
+      bench-lane: shared

@@ -1,0 +1,11 @@
+---
+apiVersion: odigos.io/v1alpha1
+kind: Sampling
+metadata:
+  name: bench-global-sampling
+  namespace: odigos-system
+spec:
+  name: bench-global-sampling
+  noisyOperations:
+    - name: match-all
+      percentageAtMost: PCT

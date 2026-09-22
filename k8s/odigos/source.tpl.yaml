@@ -1,0 +1,12 @@
+---
+apiVersion: odigos.io/v1alpha1
+kind: Source
+metadata:
+  name: bench-workload-src
+  namespace: cell-${CELL}
+spec:
+  otelServiceName: bucket-app-${CELL}
+  workload:
+    kind: Deployment
+    name: bucket-app
+    namespace: cell-${CELL}

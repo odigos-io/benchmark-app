@@ -1,0 +1,76 @@
+# In-cluster orchestrator: the kit's scripts run from this pod so that the
+# timed snapshots depend on the cluster's clock and uptime, not on a laptop
+# staying awake. Drive it with bin/incluster.sh (sync / run / chain / fetch).
+#
+# The ServiceAccount is bound to cluster-admin because this is a dedicated
+# benchmark cluster. A narrower role would need: jobs, pods, pods/exec,
+# pods/log, configmaps in bench-runner (create/get/list/delete); deployments
+# get/list/patch and pods get/list/exec in every cell-* namespace (rollout
+# restart is a patch); sources.odigos.io get/create/delete in cell-*;
+# samplings.odigos.io get/create/delete and instrumentationconfigs get/list in
+# cell-* and odigos-system; pods get/list in odigos-system; nodes get/list.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: bench-orchestrator
+  namespace: bench-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: bench-orchestrator-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: bench-orchestrator
+    namespace: bench-runner
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bench-orchestrator
+  namespace: bench-runner
+  labels:
+    app: bench-orchestrator
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bench-orchestrator
+  template:
+    metadata:
+      labels:
+        app: bench-orchestrator
+    spec:
+      serviceAccountName: bench-orchestrator
+      nodeSelector:
+        bench-lane: shared
+      terminationGracePeriodSeconds: 5
+      containers:
+        - name: orchestrator
+          image: ${RUNNER_IMAGE}
+          command: ["sleep", "infinity"]
+          workingDir: /work
+          env:
+            # Empty on purpose: kubectl then uses the in-cluster config.
+            - name: KUBE_CONTEXT
+              value: ""
+          volumeMounts:
+            - name: work
+              mountPath: /work
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+      volumes:
+        - name: work
+          emptyDir: {}

@@ -1,0 +1,42 @@
+# One-shot calibration of the CPU primitive on a cell's own app node, with the
+# same image, JVM flags and exclusive core the measured pod gets. Prints
+# µs/unit (threads=1 and 2) and suggested units per bucket to its log.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${JOB_NAME}
+  namespace: cell-${CELL}
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: bucket-calibrate
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        bench-cell: ${CELL}
+      tolerations:
+        - key: bench-cell
+          operator: Equal
+          value: ${CELL}
+          effect: NoSchedule
+      containers:
+        - name: app
+          image: ${APP_IMAGE}
+          env:
+            - name: BENCH_MODE
+              value: calibrate
+            - name: BENCH_PRESET
+              value: "${PRESET}"
+            - name: JAVA_TOOL_OPTIONS
+              value: "${JAVA_TOOL_OPTIONS}"
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "2"
+              memory: 4Gi
+      imagePullSecrets:
+        - name: registry-pull

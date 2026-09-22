@@ -1,0 +1,14 @@
+apiVersion: odigos.io/v1alpha1
+kind: Destination
+metadata:
+  name: bench-otlp
+  namespace: odigos-system
+spec:
+  type: otlp
+  destinationName: bench-otlp
+  data:
+    OTLP_GRPC_ENDPOINT: "otlp-sink.bench-sink.svc.cluster.local:4317"
+    OTLP_GRPC_TLS_ENABLED: "false"
+    OTLP_GRPC_COMPRESSION: "none"
+  signals:
+    - TRACES

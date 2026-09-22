@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: cell-xl
+resources:
+  - ../../base
+patches:
+  - target:
+      kind: Deployment
+      name: bucket-app
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/nodeSelector/bench-cell
+        value: xl
+      - op: replace
+        path: /spec/template/spec/tolerations/0/value
+        value: xl
+      - op: replace
+        path: /spec/template/spec/containers/0/env/2
+        value:
+          name: BENCH_PRESET
+          value: M
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: BENCH_JDBC_OPS
+          value: "8"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: BENCH_REDIS_OPS
+          value: "5"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: BENCH_HTTP_CALLS
+          value: "3"
+  - target:
+      kind: Deployment
+      labelSelector: bench-role=deps
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/nodeSelector/bench-deps
+        value: xl
+      - op: replace
+        path: /spec/template/spec/tolerations/0/value
+        value: xl
